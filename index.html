@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Gnote</title>
+  <style>
+    *{margin:0;padding:0;color: white;}
+    #app{
+      display: flex;
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      box-sizing: border-box;
+      cursor: default;
+      user-select: none;
+      background-color: #24478C;
+    }
+    .file{
+      flex: 1;
+      height: 100vh;
+      padding: 10px;
+      box-sizing: border-box;
+    }
+    .content{
+      flex: 5;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .item_div1{
+      display: flex;
+      /* height: 30px; */
+    }
+    .item_div2{
+      display: flex;
+    }
+    .head{
+      display: flex;
+    }
+    .blank{
+      height: 30px;
+    }
+    .dot{
+      height: 30px;
+      width: 30px;
+      text-align: center;
+      line-height: 30px;
+      cursor: pointer;
+    }
+    .item{
+      outline: none;
+      width: 50vw;
+      line-height: 30px;
+      cursor: text;
+    }
+    .popMenu{
+      position: absolute;
+      display: flex;
+      flex-direction: column;
+      width: 200px;
+      padding: 10px;
+      background-color: aqua;
+    }
+    .item_file{
+      font-size: 0.8rem;
+      height: 30px;
+      line-height: 30px;
+      padding-left: 10px;
+    }
+    .item_menu{
+      font-size: 0.6rem;
+    }
+  </style>
+  <script src="https://unpkg.com/vue@3.0.5/dist/vue.global.prod.js"></script>
+</head>
+<body>
+<div id="app">
+  <!-- <div class="file" @mouseup=upFile($event)>
+    <div class="item_file" v-for="(item,index) in list_file" @click="openFile(index)" 
+      :contenteditable="index==editIndex" :autofocus="true" @blur="titleChange($event)"
+      :style="{backgroundColor:selectFileIndex==index?'rgba(0,0,0,0.1)':''}">{{item}}</div>
+  </div> -->
+  <div class="content">
+    <div class="item_div1" v-for="(item,index) in list" :key="index">
+      <div class="item_div2" v-if="list_hide.indexOf(index) == -1">
+        <div class="head">
+          <div class="blank" :style="{width:(item.level-1)*w+'px'}"></div>
+          <div class="dot" @mousedown="down($event,index)" @mousewheel="wheel($event,index)"
+            @click="dotClick(index)">{{item.isFold?'+':'-'}}</div>
+        </div>
+        <div class="item" contenteditable="true" spellcheck="false"
+          @blur="(e)=>{list[index].content = e.target.innerHTML;save()}">{{item.content}}</div>
+      </div>
+    </div>    
+  </div>
+  <div class="popMenu" v-if="isFileMenu" @mouseleave="()=>isFileMenu=false" :style="{left:left+'px',top:top+'px'}">
+    <div class="item_menu" @click="newFile">新建</div>
+  </div>
+</div>
+  
+<script>
+  const {createApp,reactive,toRefs,toRaw} = Vue
+  const state = reactive({
+    list:[{level:1,content:""}],
+    w:40, //一个缩进的长度px
+    left:0, //弹窗菜单的位置
+    top:0,
+    selectFileIndex:0,  //打开的文件序号
+    editIndex:-1,//可编辑文件名序号
+    isFileMenu:false, //文件菜单开关
+    list_hide:[], //隐藏后序号
+    list_file:[], //文件列表
+  })
+  const app = createApp({
+    setup(){
+      let moveX = 0  //鼠标累计移动量
+      let isMove = false //防止移动事件触发点击事件
+      let netData = []
+      let all = [] //全部数据
+      let isControlDown = false
+      let moveCount = 0 //忽略点击产生的move
+
+      document.oncontextmenu = ()=>false //禁用菜单
+      document.ondragstart = ()=>false  //禁用拖拽
+      window.onbeforeunload = ()=>{
+        localStorage.setItem("key","value")
+      }
+      all = JSON.parse(localStorage.getItem('gnote'))
+      state.list = all[0].content
+            
+      //保存到缓存
+      function save(){
+        all[0].content = state.list
+        localStorage.setItem('gnote',JSON.stringify(all))
+      }
+
+      function save_net(){
+        let url = 'https://ca448d14-fda5-4d8f-9279-3f4896d8f854.bspapp.com/index'
+        fetch(url,{
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({action:'updateNote',title:state.list_file[state.selectFileIndex],content:state.list})
+        }).then(res=>res.json()).then(res=>{
+          if(res.updated&&res.updated==1){
+            alert('保存成功')
+          }else{
+            alert('保存失败：'+res)
+          }
+        }).catch(res=>{
+          console.log('保存失败：'+res);
+        })
+      }
+      function titleChange(e){ 
+        let url = 'https://ca448d14-fda5-4d8f-9279-3f4896d8f854.bspapp.com/index'
+        let list = [{level:1,isFold:false,content:''}]
+        fetch(url,{
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({action:'addNote',title:e.target.innerHTML,content:list})
+        }).then(res=>res.json()).then(res=>{
+          console.log(res);
+          if(res.id){
+            alert('添加成功')
+            state.editIndex = -1
+          }else{
+            alert('添加失败'+res)
+          }
+        }).catch(res=>{
+          alert('添加失败'+res)
+        })
+        
+      }
+      function openFile(index){
+        state.selectFileIndex = index
+        state.list = netData[index].content
+      }
+      function newFile(){
+        state.isFileMenu = false
+        state.list_file.push('')
+        state.editIndex = state.list_file.length-1
+      }
+      function upFile(e){ //文件区的右键事件
+        if(e.button==2){
+          state.isFileMenu = true
+          state.left = e.clientX
+          state.top = e.clientY
+        }
+      }
+      function getNetData(){
+        let url = 'https://ca448d14-fda5-4d8f-9279-3f4896d8f854.bspapp.com/index'
+        fetch(url,{
+          method:'POST',
+          headers: {'Content-Type': 'application/json'},
+          body:JSON.stringify({action:'getNotes'}),
+        }).then(res=>res.json()).then(res=>{
+          netData = res.data
+          netData.forEach(element => {
+            state.list_file.push(element.title)
+          });
+          openFile(0)
+        }).catch(err=>{console.log(`获取数据失败：${err}`);})
+      }
+      function findHide(){  //更新隐藏的序号
+        state.list_hide = []
+        let start = -1
+        let startLevel = -1
+        for(let i=0;i<state.list.length;i++){
+          if(start==-1){
+            if(state.list[i].isFold==true){
+              start = i
+              startLevel = state.list[i].level
+            }
+          }else{
+            if(state.list[i].level<=startLevel){
+              if(state.list[i].isFold==true){
+                start = i
+                startLevel = state.list[i].level
+              }else{
+                start = -1
+                startLevel = -1
+              }
+            }else{
+              state.list_hide.push(i)
+            }
+          }
+        }
+      }
+      function wheel(e,index){
+        if(e.deltaY>0){
+          state.list.splice(index+1,0,{level:state.list[index].level,content:""})
+        }else{
+          state.list.splice(index,0,{level:state.list[index].level,content:""})
+        }
+      }
+      function down(e,index){
+        if(e.button==0){  //左键
+          window.onmousemove = (event)=> move(event,index)
+          window.addEventListener('mouseup',up)
+        }
+        
+      }
+      function move(e,index){
+        if(moveCount<5){
+          moveCount++
+          return
+        }
+        isMove = true
+        moveX += e.movementX
+        if (Math.abs(moveX)>=state.w) {
+          state.list[index].level += moveX/Math.abs(moveX)
+          moveX = 0
+        }
+      }
+      function up(){
+        moveX = 0
+        moveCount = 0
+        window.onmousemove = null
+        window.removeEventListener('mouseup',up)
+      }
+      function dotClick(index){
+        if(!isMove){
+          state.list[index].isFold = !state.list[index].isFold
+          findHide()
+        }
+        isMove = false
+      }
+      // window.addEventListener('keydown',(e)=>{  //快捷键
+      //   if(e.code=='KeyS'&&isControlDown){
+      //     e.preventDefault()
+      //     save()
+      //   }
+      //   if(e.code=='ControlLeft'){
+      //     isControlDown = true
+      //   }else{
+      //     isControlDown = false
+      //   }       
+      // })
+      return {
+        ...toRefs(state),
+        down,
+        save,
+        wheel,
+        dotClick,
+        upFile,
+        newFile,
+        openFile,
+        titleChange,
+      }
+    }
+  })
+  app.mount('#app')
+</script>
+</body>
+</html>
+<!-- #24478C -->

@@ -1,0 +1,13 @@
+{
+  "name": "gnote",
+  "version": "1.0.0",
+  "description": "",
+  "main": "main.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "packager": "electron-packager . Gnote --platform=win32 --arch=x64 --out=./out --electron-version 16.0.1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
