@@ -1,11 +1,18 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <title>Gnote</title>
   <style>
-    *{margin:0;padding:0;color: white;}
-    #app{
+    * {
+      margin: 0;
+      padding: 0;
+      color: white;
+      box-sizing: border-box;
+    }
+
+    #app {
       display: flex;
       position: relative;
       width: 100vw;
@@ -15,45 +22,75 @@
       user-select: none;
       background-color: #24478C;
     }
-    .file{
+
+    .scroll {
+      overflow-y: scroll;
+    }
+
+    .scroll::-webkit-scrollbar {
+      width: 10px;
+    }
+
+    .scroll::-webkit-scrollbar-thumb {
+      background-color: rgba(0, 0, 0, 0.2);
+    }
+
+    .file {
       flex: 1;
       height: 100vh;
       padding: 10px;
       box-sizing: border-box;
     }
-    .content{
+
+    .content-out {
       flex: 5;
       height: 100vh;
       display: flex;
-      flex-direction: column;
+      padding: 20px;
     }
-    .item_div1{
-      display: flex;
-      /* height: 30px; */
+    .content{
+      width: 100%;
     }
-    .item_div2{
-      display: flex;
-    }
-    .head{
+    .item_div2 {
       display: flex;
     }
-    .blank{
+
+    .head {
+      display: flex;
+    }
+
+    .blank {
       height: 30px;
     }
-    .dot{
+
+    .dot {
       height: 30px;
       width: 30px;
+      border-radius: 5px;
       text-align: center;
       line-height: 30px;
       cursor: pointer;
     }
-    .item{
+
+    .dot:hover {
+      background-color: rgba(0, 0, 0, 0.5);
+    }
+
+    .item {
       outline: none;
-      width: 50vw;
+      /* width: 50vw; */
+      flex: 1;
       line-height: 30px;
       cursor: text;
+      overflow-wrap: anywhere;
+      white-space: pre;
     }
-    .popMenu{
+
+    .item::selection {
+      background-color: cyan;
+    }
+
+    .popMenu {
       position: absolute;
       display: flex;
       flex-direction: column;
@@ -61,183 +98,219 @@
       padding: 10px;
       background-color: aqua;
     }
-    .item_file{
+
+    .item_file {
       font-size: 0.8rem;
       height: 30px;
       line-height: 30px;
       padding-left: 10px;
     }
-    .item_menu{
+
+    .item_menu {
       font-size: 0.6rem;
     }
   </style>
   <script src="https://unpkg.com/vue@3.0.5/dist/vue.global.prod.js"></script>
 </head>
+
 <body>
-<div id="app">
-  <div class="file" @mouseup=upFile($event)>
-    <div class="item_file" v-for="(item,index) in list_file" @click="openFile(index)" 
-      :contenteditable="index==editIndex" :autofocus="true" @blur="titleChange($event)"
-      :style="{backgroundColor:selectFileIndex==index?'rgba(0,0,0,0.1)':''}">{{item}}</div>
-  </div>
-  <div class="content">
-    <div class="item_div1" v-for="(item,index) in list" :key="index">
-      <div class="item_div2" v-if="list_hide.indexOf(index) == -1">
-        <div class="head">
-          <div class="blank" :style="{width:(item.level-1)*w+'px'}"></div>
-          <div class="dot" @mousedown="down($event,index)" @mousewheel="wheel($event,index)"
-            @click="dotClick(index)">{{item.isFold?'+':'-'}}</div>
+  <div id="app">
+    <div class="file" @mouseup=upFile($event)>
+      <div class="item_file" v-for="(item,index) in list_file" @click="openFile(index)"
+        :contenteditable="index==editIndex" :autofocus="true" @blur="titleChange($event)"
+        :style="{backgroundColor:selectFileIndex==index?'rgba(0,0,0,0.1)':''}">{{item}}</div>
+    </div>
+    <div class="content-out">
+      <div class="content scroll">
+        <div class="item_div1" v-for="(item,index) in list" :key="index">
+          <div class="item_div2" v-if="list_hide.indexOf(index) == -1">
+            <div class="head">
+              <div class="blank" :style="{width:(item.level-1)*w+'px'}"></div>
+              <div class="dot" :style="{backgroundColor: isDotLive ? 'rgba(0,0,0,0.5)' : ''}"
+                @mousedown="down($event,index)" @mousewheel="wheel($event,index)" @click="dotClick(index)">
+                {{item.isFold?'+':'-'}}</div>
+            </div>
+            <div class="item" contenteditable="true" spellcheck="false"
+              @blur="(e)=>{list[index].content = e.target.innerHTML;save()}">{{item.content}}</div>
+          </div>
         </div>
-        <div class="item" contenteditable="true" spellcheck="false"
-          @blur="(e)=>{list[index].content = e.target.innerHTML;save()}">{{item.content}}</div>
       </div>
-    </div>    
-  </div>
-  <div class="popMenu" v-if="isFileMenu" @mouseleave="()=>isFileMenu=false" :style="{left:left+'px',top:top+'px'}">
-    <div class="item_menu" @click="newFile">新建</div>
-  </div>
-</div>
-  
-<script>
-  const {createApp,reactive,toRefs,toRaw} = Vue
-  const state = reactive({
-    list:[{level:1,content:""}],
-    w:40, //一个缩进的长度px
-    left:0, //弹窗菜单的位置
-    top:0,
-    selectFileIndex:0,  //打开的文件序号
-    editIndex:-1,//可编辑文件名序号
-    isFileMenu:false, //文件菜单开关
-    list_hide:[], //隐藏后序号
-    list_file:[], //文件列表
-  })
-  const app = createApp({
-    setup(){
-      let moveX = 0  //鼠标累计移动量
-      let isMove = false //防止移动事件触发点击事件
-      // let netData = []
-      let all = [{title:"js",content:[{level:1,content:"",isFold:false},{level:2,content:"",isFold:false},{level:1,content:"",isFold:false}]},
-      {title:"vue",content:[{level:1,content:"",isFold:false}]}] //全部数据
-      let isControlDown = false
-      let moveCount = 0 //忽略点击产生的move
+    </div>
 
-      document.oncontextmenu = ()=>false //禁用菜单
-      document.ondragstart = ()=>false  //禁用拖拽
-      window.onbeforeunload = ()=>{
-        localStorage.setItem("all",JSON.stringify(all))
-      }
-      let all_ = JSON.parse(localStorage.getItem('all'))
-      if(all_) all = all_
-      state.list = all[0].content
-      state.list_file = all.map(v=>v.title)
-            
-      //保存单条句子的onblur
-      function save(){ 
-        all[0].content = state.list
-      }
+    <div class="popMenu" v-if="isFileMenu" @mouseleave="()=>isFileMenu=false" :style="{left:left+'px',top:top+'px'}">
+      <div class="item_menu" @click="newFile">新建</div>
+    </div>
+  </div>
 
-      function titleChange(e){ 
-        
-        
-      }
-      function openFile(index){
-        state.selectFileIndex = index
-        state.list = all[index].content
-      }
-      //新建文件
-      function newFile(){
-        state.isFileMenu = false
-        state.list_file.push('未命名')
-        all.push({title:"未命名",content:[{level:1,content:"",isFold:false}]})
-        state.editIndex = state.list_file.length-1
-      }
-      function upFile(e){ //文件区的右键事件
-        if(e.button==2){
-          state.isFileMenu = true
-          state.left = e.clientX
-          state.top = e.clientY
+  <script>
+    const { createApp, reactive, toRefs, toRaw } = Vue
+    const state = reactive({
+      list: [{ level: 1, content: "" }], //某个分类下的数据
+      w: 40, //一个缩进的长度px
+      left: 0, //弹窗菜单的位置
+      top: 0,
+      selectFileIndex: 0,  //打开的文件序号
+      editIndex: -1,//可编辑文件名序号
+      isFileMenu: false, //文件菜单开关
+      list_hide: [], //隐藏后序号
+      list_file: [], //文件列表
+      isDotLive: false,//节点是否激活样式
+    })
+    const app = createApp({
+      setup() {
+        let moveX = 0  //鼠标累计移动量
+        let isMove = false //防止移动事件触发点击事件
+        //全部数据
+        let all = [{ title: "js", content: [{ level: 1, content: "", isFold: false }, { level: 2, content: "", isFold: false }, { level: 1, content: "", isFold: false }] },
+        { title: "vue", content: [{ level: 1, content: "", isFold: false }] }] //全部数据
+        let isControlDown = false
+        let moveCount = 0 //忽略点击触发的move
+
+        init()
+
+        function init() {
+          document.oncontextmenu = () => false //禁用菜单
+          document.ondragstart = () => false  //禁用拖拽
+          window.onbeforeunload = () => {
+            localStorage.setItem("all", JSON.stringify(all))
+          }
+          let all_ = JSON.parse(localStorage.getItem('all'))
+          if (all_) all = all_
+          state.list = all[0].content
+          state.list_file = all.map(v => v.title)
         }
-      }
-      function findHide(){  //更新隐藏的序号
-        state.list_hide = []
-        let start = -1
-        let startLevel = -1
-        for(let i=0;i<state.list.length;i++){
-          if(start==-1){
-            if(state.list[i].isFold==true){
-              start = i
-              startLevel = state.list[i].level
+
+        //保存单条句子的onblur
+        function save() {
+          all[0].content = state.list
+        }
+
+        function titleChange(e) {
+
+
+        }
+        function openFile(index) {
+          state.selectFileIndex = index
+          state.list = all[index].content
+        }
+        //新建文件
+        function newFile() {
+          state.isFileMenu = false
+          state.list_file.push('未命名')
+          all.push({ title: "未命名", content: [{ level: 1, content: "", isFold: false }] })
+          state.editIndex = state.list_file.length - 1
+        }
+        //文件区的右键事件
+        function upFile(e) {
+          if (e.button == 2) {
+            state.isFileMenu = true
+            state.left = e.clientX
+            state.top = e.clientY
+          }
+        }
+        //找出子节点序号
+        function findChildren(index, arr) {
+          if (index == arr.length - 1) return []
+          let children = []
+          for (let i = index + 1; i < arr.length; i++) {
+            if (arr[i].level > arr[index].level) {
+              children.push(i)
+            } else {
+              return children
             }
-          }else{
-            if(state.list[i].level<=startLevel){
-              if(state.list[i].isFold==true){
+          }
+          return children
+        }
+        //更新隐藏的序号
+        function findHide() {
+          state.list_hide = []
+          let start = -1
+          let startLevel = -1
+          for (let i = 0; i < state.list.length; i++) {
+            if (start == -1) {
+              if (state.list[i].isFold == true) {
                 start = i
                 startLevel = state.list[i].level
-              }else{
-                start = -1
-                startLevel = -1
               }
-            }else{
-              state.list_hide.push(i)
+            } else {
+              if (state.list[i].level <= startLevel) {
+                if (state.list[i].isFold == true) {
+                  start = i
+                  startLevel = state.list[i].level
+                } else {
+                  start = -1
+                  startLevel = -1
+                }
+              } else {
+                state.list_hide.push(i)
+              }
             }
           }
         }
-      }
-      //节点上的鼠标操作
-      function wheel(e,index){
-        if(e.deltaY>0){
-          state.list.splice(index+1,0,{level:state.list[index].level,content:""})
-        }else{
-          state.list.splice(index,0,{level:state.list[index].level,content:""})
+        //节点上的鼠标操作
+        function wheel(e, index) {
+          if (e.deltaY > 0) {
+            state.list.splice(index + 1, 0, { level: state.list[index].level, content: "" })
+          } else {
+            state.list.splice(index, 0, { level: state.list[index].level, content: "" })
+          }
         }
-      }
-      function down(e,index){
-        if(e.button==0){  //左键
-          window.onmousemove = (event)=> move(event,index)
-          window.addEventListener('mouseup',up)
+        function down(e, index) {
+          if (e.button == 0) {  //左键
+            state.isDotLive = true
+            window.onmousemove = (event) => move(event, index)
+            window.onmouseup = () => up()
+          }
+          if(e.button ==2){
+            state.list.length !=1 && state.list.splice(index,1)
+          }
         }
-        
-      }
-      function move(e,index){
-        if(moveCount<5){
-          moveCount++
-          return
+        function move(e, index) {
+          // if (moveCount < 5) {
+          //   moveCount++
+          //   return
+          // }
+          isMove = true
+          moveX += e.movementX
+          if (Math.abs(moveX) >= state.w) {
+            let add = moveX / Math.abs(moveX)
+            if (state.list[index].level == 1 && add == -1) return
+            let children = findChildren(index, state.list)
+            state.list[index].level += add
+            children.forEach(v => state.list[v].level += add)
+            moveX = 0
+          }
         }
-        isMove = true
-        moveX += e.movementX
-        if (Math.abs(moveX)>=state.w) {
-          state.list[index].level += moveX/Math.abs(moveX)
+        function up() {
           moveX = 0
+          moveCount = 0
+          state.isDotLive = false
+          window.onmousemove = null
+          window.removeEventListener('mouseup', up)
+        }
+        function dotClick(index) {
+          if (!isMove) {
+            state.list[index].isFold = !state.list[index].isFold
+            findHide()
+          }
+          isMove = false
+        }
+        return {
+          ...toRefs(state),
+          down,
+          save,
+          wheel,
+          dotClick,
+          upFile,
+          newFile,
+          openFile,
+          titleChange,
         }
       }
-      function up(){
-        moveX = 0
-        moveCount = 0
-        window.onmousemove = null
-        window.removeEventListener('mouseup',up)
-      }
-      function dotClick(index){
-        if(!isMove){
-          state.list[index].isFold = !state.list[index].isFold
-          findHide()
-        }
-        isMove = false
-      }
-      return {
-        ...toRefs(state),
-        down,
-        save,
-        wheel,
-        dotClick,
-        upFile,
-        newFile,
-        openFile,
-        titleChange,
-      }
-    }
-  })
-  app.mount('#app')
-</script>
+    })
+    app.mount('#app')
+  </script>
 </body>
+
 </html>
 <!-- #24478C -->
